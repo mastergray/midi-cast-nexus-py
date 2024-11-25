@@ -10,6 +10,9 @@ from .ResetEverything import ResetEverything
 from .ToggleActive import ToggleActive
 from .ToggleTimeInput import ToggleTimeInput
 from .ToggleTonicInput import ToggleTonicInput
+from .ToggleMute import ToggleMute
+from .LoadPatch import LoadPatch
+from .CCMapping import CCMapping
 
 __all__ = [
     "MIDICastNexusControl",
@@ -23,5 +26,8 @@ __all__ = [
     "ResetEverything",
     "ToggleActive",
     "ToggleTimeInput",
-    "ToggleTonicInput"
+    "ToggleTonicInput",
+    "ToggleMute",
+    "LoadPatch",
+    "CCMapping"
 ]
