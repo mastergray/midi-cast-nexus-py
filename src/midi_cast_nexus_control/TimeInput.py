@@ -36,7 +36,7 @@ class TimeInput(MIDICastNexusControl):
                 print(f"Switch Time Input back from #{self.msgChannel} to #{self.initChannel}")
                 self.msgChannel = self.initChannel 
                 self.isSwitched = False
- 
+
     # @Overide
     def onMatchedMessage(self, message: mido.Message) -> None:
         if self.nexus.isActive is True and self.isActive is True:
@@ -44,14 +44,18 @@ class TimeInput(MIDICastNexusControl):
             if self.nexus.steps is None:
                 print(f"Current Step: {self.nexus.currentStep}")
             else :
-                print(f"Current Step: ({self.nexus.currentStep} / {self.nexus.steps}")  
+                print(f"Current Step: ({self.nexus.currentStep} / {self.nexus.steps})")  
+            # NOTE: WE do this here to ensure patches reapat correctly given time inputs handle incrementing the nexus step counter:
+            if self.nexus.patch is not None:
+                self.nexus.patch.updateRepeat()
             if self.nexus.steps is None:
                 self.nexus.currentStep += 1
             else:
-                if self.nexus + 1 > self.nexus.steps:
+                if self.nexus.currentStep + 1 > self.nexus.steps:
                     self.nexus.currentStep = 1
                 else:
                     self.nexus.currentStep +=1 
+                
 
     #################
     # Magic Methods #

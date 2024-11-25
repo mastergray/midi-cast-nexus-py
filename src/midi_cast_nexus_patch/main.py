@@ -6,6 +6,8 @@ sys.path.append(modules_dir_path)
 
 # Dependencies:
 from typing import Union, List, TYPE_CHECKING                   # For annotating method signatures
+from midi_cast_nexus_binding import MIDICastNexusBinding        # For ensuring only bindings are registered to a patch
+import mido
 
 # For preventing circular imports caused by type annotations:
 if TYPE_CHECKING:
@@ -24,103 +26,46 @@ class MIDICastNexusPatch:
     # CONSTRUCTOR #
     ###############
 
-    def __init__(self, id : str, bindings = List["MIDICastNexusBinding"], bpm : Union[str, int, None] = None, steps: Union[str, int, None] = None , repeat : Union[str, int, None] = None, nextPatch : Union[str, int, None] = None):
+    def __init__(self, id : str, bindings = List["MIDICastNexusBinding"], bpm : Union[int, None] = 120, steps: Union[int, None] = None , repeat : Union[int, None] = None, nextPatch : Union[str, None] = None):
         self.id = id                # ID of the patch
         self.bpm = bpm              # BPM of the patch used to calculate gate with
         self.steps = steps          # Number of steps supported by patch (NONE means there is no maximum step that would reset the counter)
         self.repeat = repeat        # Number of types to repeat patch before going to another patch
         self.nextPatch = nextPatch  # What patch to go to next after repeating the patch a specificed number of times
-        # No properties defined since they aren't intended to be directly accessed from the instance:
         self.bindings = bindings    # Bindings defined for patch
-        self.nexus = None       # The nexus instance this patch is registered to
-        self.currentStep = 1    # Step counter for patch
+        self.nexus = None           # The nexus instance this patch is registered to
+        self.repeatCount = -1       # Number of times this patch has been played since it was loaded by nexus - we start at -1 to ensure that the patch has been repeated and not just played
 
     ##############
     # Properties #
     ##############
 
-    #----#
-    # id #
-    #----#
+    #----------#
+    # bindings #
+    #----------#
 
     @property
-    def id(self):
-        """GETTER for this patche's ID"""
-        return self._id
-
-    @id.setter
-    def id(self, value : str):
-        """SETTER fot this patch's ID"""
-        self._id = value
-
-    #-----#
-    # bpm #
-    #-----#
-
-    @property
-    def bpm(self):
-        """GETTER for this patch's BPM"""
-        return self._bpm
-
-    @bpm.setter
-    def bpm(self, value: Union[str, int, None]):
-        """SETTER for this patch's BPM"""
-        # NOTE: Setting NONE will default BPM to 120 
-        if isinstance(value, str):
-            if not value.isdigit():
-                raise ValueError(f"{value} is not a STRING of an INTEGER for setting a patch's BPM with!")
-            self._bpm = int(value)
-        elif isinstance(value, None):
-            self._bpm = 120
-        elif isinstance(value, int):
-            self._bpm = value 
-        else:
-            raise ValueError(f"{value} is not a supported type for setting a patch's BPM  with!")
+    def bindings(self):
+        """GETTER for bindings registered to this patch"""
+        return self._bindings
     
-    #-------#
-    # steps #
-    #-------#
-
-    @property
-    def steps(self):
-        """GETTER for number of steps this patch supports"""
-        return self._steps
-    
-    @steps.setter
-    def steps(self, value : Union[str, int, None]):
-        """SETTER for number of steps tis patch supports"""
-        if isinstance(value, str):
-            if not value.isdigit():
-                raise ValueError(f"{value} is not a STRING of an INTEGER for setting a patch's number of steps with!")
-            self._bpm = int(value)
-        elif isinstance(value, None) or isinstance(value, int):
-            self._bpm = value 
-        else:
-            raise ValueError(f"{value} is not a supported type for setting a patch's  number of steps  with!")
-
+    @bindings.setter
+    def bindings(self, value):
+        """SETTER for registering binding to this patch"""
+        self._bindings = []
+        if isinstance(value, list):
+            for binding in value:
+                if isinstance(binding, MIDICastNexusBinding):
+                    self.registerBinding(binding)
 
     ####################
     # Instance Methods #
     ####################
 
-    def register(self, nexus: "MIDICastNexus"):
-        """Sets nexus instance this patch belongs to and adds itself to patches manged by that instance"""
-        self.nexus = nexus 
-        nexus.registerPatch(self.id, self)
-
-    def resetCurrentStep(self):
-        """Reset current step by setting it to 1"""
-        self.currentStep = 1
-
-    def nextStep(self):
-        """Increments current count stored by patch"""
-        if self.steps is None:
-            self.currentStep +=1 
-        else:
-            if self.currentStep + 1 > self.steps:
-                self.resetCurrentStep()
-            else:
-                self.curentStep += 1
+    def registerBinding(self, binding:"MIDICastNexusBinding"):
+        """Registers binding to this patch"""
+        binding.patch = self 
+        self._bindings.append(binding)
 
     def timePerStep(self):
         """Returns time per step calculated from set BPM of patch"""
@@ -129,12 +74,34 @@ class MIDICastNexusPatch:
         timePerStep = secondsPerBeat / 4 # Time per quater note in seconds
         return timePerStep
     
-    '''
-    def calcGate(self, startStep : int, numberOfSteps : int, count : int = 1):
-        """Calculates the gate per step for with optional count"""
-        return ((startStep + numberOfSteps) * self.timePerStep()) / count 
-    '''
+    def calcGateTime(self, gate: Union[int, None], count : int):
+        """Calculates the gate time in seconds"""
+        if gate is None:
+            return gate
+        else:
+            return (gate * self.timePerStep()) / count 
+        
+    def updateRepeat(self):
+        """Determine if the patch has repeated or not"""
+        if self.repeat is not None:
+            if self.nexus.currentStep == self.steps:
+                self.repeatCount += 1 
+                print(f"{self.id} Repeated ({self.repeatCount} / {self.repeat})")
 
     #################
     # Magic Methods #
     #################
+
+    def __call__(self, message : mido.Message):      
+        # Checks if we need to load the next patch:
+        if self.repeat is not None and self.repeatCount == self.repeat:
+            if self.nextPatch is not None:
+                self.nexus.loadPatch(self.nextPatch)
+            else:
+                self.nexus.loadPatch(None)
+        else:
+            # Otherwise call registed bindings:
+            for binding in self.bindings:
+                if binding.outputChannel not in self.nexus.mutedChannels:
+                    binding(message)
+
