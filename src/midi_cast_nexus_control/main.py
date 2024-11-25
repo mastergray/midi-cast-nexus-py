@@ -58,7 +58,7 @@ class MIDICastNexusControl(MIDICastNexusRelay):
         """GETTER for nexus instance this control is registered to"""
         self._nexus = value
 
-   ########4############
+   #####################
    # Overriden Methods # 
    #####################
 

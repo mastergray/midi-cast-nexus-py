@@ -26,16 +26,22 @@ class MIDICastNexus:
     # CONSTRUCTOR #
     ###############
 
-    def __init__(self, url : str, timeInput : Union[int, List[int]], tonicInput : Union[int, List[int], None] = None, controls:Union[List[MIDICastNexusControl], None] = None, patches : Union[List[MIDICastNexusPatch], None] = None):
-        self.url = url
-        self.timeInput = timeInput 
-        self.tonicInput = tonicInput
-        self.controls = controls
-        # State Variables:
-        self.isActive = True     # Determine if messages can be relayed
-        self.steps = None        # Number of steps in sequence
-        self.currentStep = 1     # Current step of sequence
-        self.currentTonic = None # Current tonic used by chords
+    def __init__(self, url : str, timeInput : Union[int, List[int]], tonicInput : Union[int, List[int], None] = None, controls:Union[List[MIDICastNexusControl], None] = None, patches : Union[List[MIDICastNexusPatch], None] = None, patch : Union[str, None] = None):
+        self.url = url                  # Where to send MIDI message to 
+        self.timeInput = timeInput      # Availabe time inputs
+        self.tonicInput = tonicInput    # Available tonic inputs
+        self.controls = controls        # Available controls
+        self.patches = patches          # Availabe patches
+        self.isActive = True            # Determine if messages can be relayed
+        self.steps = None               # Number of steps in sequence
+        self.currentStep = 1            # Current step of sequence
+        self.currentTonic = None        # Current tonic used by chords
+        self.patch = patch              # Patch to load on start up
+        self.mutedChannels = []         # Stores channels we can't send messages to 
+
+         # Load patch by ID if given:
+        if patch is not None:
+            self.loadPatch(patch)
 
     ##############
     # Properties #
@@ -83,7 +89,6 @@ class MIDICastNexus:
         else:
             pass
     
-
     #----------#
     # controls #
     #----------#
@@ -95,6 +100,7 @@ class MIDICastNexus:
     
     @controls.setter
     def controls(self, value):
+        """SETTER for controls registered to this instance"""
         self._controls = []
         if isinstance(value, list):
             for control in value:
@@ -105,17 +111,39 @@ class MIDICastNexus:
     # patches #
     #---------#
 
+    @property
+    def patches(self):
+        """GETTER for patches registered to this nexus"""
+        return self._patches
+    
+    @patches.setter
+    def patches(self, value):
+        """SETTER for registering patches to this nexus"""
+        self._patches = {}
+        if isinstance(value, list):
+            for patch in value:
+                if isinstance(patch, MIDICastNexusPatch):
+                    self.registerPatch(patch)
+
     ####################
     # Instance Methods #
     ####################
 
-    def registerTimeInput(self, channel: int):
+    def registerTimeInput(self, channel: int) -> None:
         """Initalizes instance of timeInput using given channel and stores it in this nexus instance"""
         timeInput = TimeInput(msgChannel=channel)
         timeInput.nexus = self
         self._timeInput.append(timeInput)
 
-    def registerTonicInput(self, channel: int):
+    def isFromTimeInputChannel(self, message : mido.Message) -> bool:
+        """Returns TRUE if message from a registered time input, otherwise returns FALSE"""
+        for timeInput in self.timeInput:
+            if hasattr(message, "channel"): 
+                if message.channel == timeInput.msgChannel - 1:
+                    return True
+        return False
+
+    def registerTonicInput(self, channel: int) -> None:
         """Initalizes instance of tonicInput using given channel and stores it in this nexus instance"""
         tonicInput = TonicInput(msgChannel=channel)
         tonicInput.nexus = self
@@ -128,11 +156,27 @@ class MIDICastNexus:
     
     def registerPatch(self, patch : MIDICastNexusPatch):
         """Adds patch to nexus"""
-        pass 
+        patch.nexus = self 
+        self._patches[patch.id] = patch
 
-    def loadPatch(self, id : str):
-        """Set current patch of nexus"""
-        pass
+    def loadPatch(self, patchID : Union[str, None]):
+        """Initializes patch to be used by relay panel"""
+        if patchID is None:
+            self.patch = None
+            print("Unloaded patch")
+        else:
+            patch =  self.patches.get(patchID, None)
+            if patch is None:
+                print(f"No patch {patchID} found to load")
+            else:
+                self.isActive = False 
+                self.patch = patch
+                self.patch.repeatCount = -1
+                self.steps = patch.steps 
+                self.currentStep = 1
+                self.sendPanic()
+                self.isActive = True
+                print(f"Patch {patch.id} is now loaded")
 
     '''
         HTTP Send Methods 
@@ -198,7 +242,7 @@ class MIDICastNexus:
         url = f"{self.url}/cc/{channel}/sweep"
         payload = {"cc":cc, "value":value, "start":start, "stop":stop, "steps": steps, "gate":gate}
         res = requests.post(url, json=payload)
-        print("Sweep CC: ", res.json())
+        print("Sweep CC: ", res.text)
 
     def sendXML(self, xml : str):
         """Sends midi-cast-py XML to midi-cast-py server"""
@@ -218,14 +262,17 @@ class MIDICastNexus:
             print(timeInput)
         for tonicInput in self._tonicInput:
             print(tonicInput)
+        print("Loaded Patch:",  None if self.patch is None else self.patch.id)
         try:
             with inport:
                 for msg in inport:  
                     try:
-                        for tonicInput in self.tonicInput:
-                            tonicInput(msg)
                         for control in self.controls:
                             control(msg)
+                        for tonicInput in self.tonicInput:
+                            tonicInput(msg)
+                        if self.patch is not None:
+                            self.patch(msg)
                         for timeInput in self.timeInput:
                             timeInput(msg)
                     except Exception as err:
@@ -236,67 +283,46 @@ class MIDICastNexus:
             self.sendPanic()
             inport.close()
 
-
-    ##################
-    # Static Methods #
-    ##################
-
-    '''
-    @staticmethod
-    def setInt(value, invalidString: Callable[..., None], invalidType: Callable[..., None], ifNone: Union[int, Callable, None] = None):
-        """Utility method for setting optional integer from a STRING"""
-        if isinstance(value, str):
-            if isinstance(value, str):
-                if not value.isdigit():
-                    errorMessage = invalidString(value)
-                    raise ValueError(errorMessage)
-                return int(value)
-        elif isinstance(value, None):
-            defaultValue = ifNone(value) if callable(ifNone) else ifNone
-            if isinstance(defaultValue, Exception):
-                raise defaultValue
-            return defaultValue
-        elif isinstance(value, int):
-            return value
-        else:
-            errorMessage = invalidType(value)
-            raise ValueError(errorMessage)
-        
-    @staticmethod
-    def getMIDIMessageValue(message : mido.message):
-        """Returns "value" of a MIDI message based on it's type"""
-        if hasattr(message, "type"):
-            if message.type in MIDICastNexus.msgTypes:
-                if message.type == "note_on":
-                    return message.note
-                if message.type == "note_off":
-                    return message.note
-                if message.type == "pitchwheel":
-                    return message.pitch
-                if message.type == "control_change":
-                    return 
-            else:
-                raise ValueError(f"{message.type} is not a supported MIDI message type!")
-        else:
-            raise ValueError("MIDI message does not have a set MIDI message type")
-    '''
-
 # Example usage
 if __name__ == "__main__":
 
-    from midi_cast_nexus_control import ResetEverything, SwitchTimeInput, SwitchTonicInput, ToggleTonicInput, ToggleActive
+    from midi_cast_nexus_control import ResetEverything, SwitchTimeInput, SwitchTonicInput, ToggleTonicInput, ToggleActive, ToggleMute, LoadPatch, CCMapping
+    from midi_cast_nexus_binding import MIDICastNexusNoteBinding, MIDICastNexusChordBinding, MIDICastNexusSequenceBinding, MIDICastNexusArpBinding, MIDICastNexusRestBinding, MIDICastNexusCCBinding, MIDICastNexusSweepBinding
 
     # Define Controls:
     controls = [
         ResetEverything(msgChannel=10, msgType="note_on", msgValue=36),
-        SwitchTimeInput(msgChannel=10, msgType="note_on", msgValue=37, fromChannel=4, toChannel=3),
-        SwitchTonicInput(msgChannel=10, msgType="note_on", msgValue=38, fromChannel=3, toChannel=5),
-        ToggleTonicInput(msgChannel=10, msgType="note_on", msgValue=39, tonicChannel=3)
+        ToggleMute(msgChannel=10, msgType="note_on", msgValue=37, muteChannel=2),
+        LoadPatch(msgChannel=10, msgType="note_on", msgValue=38, patchID="Patch 2"),
+        LoadPatch(msgChannel=10, msgType="note_on", msgValue=39, patchID="Patch 1"),
+        CCMapping(outputChannel=1, from_cc=74, to_cc=74)
+        #SwitchTonicInput(msgChannel=10, msgType="note_on", msgValue=37, fromChannel=4, toChannel=3),
+    ]
+
+    # Define Patches 
+    patches = [
+        MIDICastNexusPatch(id="Patch 1", steps=16, repeat=1, nextPatch="Patch 1", bpm=120, bindings=[
+              MIDICastNexusChordBinding(outputChannel=1, startStep=1, degrees=["1", "4", "6b", "9#"]),
+              MIDICastNexusSweepBinding(outputChannel=1, startStep=1, gate=.05, steps=500, start=20, cc=74, easing="easeIn"),
+              MIDICastNexusSweepBinding(outputChannel=1, startStep=5, start=127, end=0, gate=1, cc=74, easing="easeOut"),
+              MIDICastNexusCCBinding(outputChannel=1, startStep=5, cc=74, value=127),
+              MIDICastNexusCCBinding(outputChannel=1, startStep=9, cc=74, value=50),
+              MIDICastNexusCCBinding(outputChannel=1, startStep=13, cc=74, value=127),
+              MIDICastNexusRestBinding(outputChannel=1, startStep=15)
+        ]),
+        MIDICastNexusPatch(id="Patch 2", steps=16, bpm=120, repeat=0, bindings = [
+             MIDICastNexusNoteBinding(outputChannel=1, startStep=1, rate=4, offset=1, gate=1, count=3, notes="C4"),
+              MIDICastNexusSequenceBinding(outputChannel=3, startStep=2, rate=4, count=4, notes=["C4", 0, "E4", 0, "G4", 0])
+        ]),
+        MIDICastNexusPatch(id="Patch 3", steps=0, bpm=120, repeat=0, bindings = [
+             MIDICastNexusNoteBinding(outputChannel=1, startStep=1, rate=4, offset=1, gate=1, count=3, notes="C4"),
+              MIDICastNexusSequenceBinding(outputChannel=3, startStep=2, rate=4, count=4, notes=["C4", 0, "E4", 0, "G4", 0])
+        ])
     ]
 
     # TODO: Probably need better way of selecting ports:
     inport = mido.open_input("E-MU XMidi1X1 Tab:E-MU XMidi1X1 Tab Out 20:0") 
 
     # Initialize and start nexus:
-    nexus = MIDICastNexus(url="http://127.0.0.1:5001", timeInput=[4, 5], tonicInput=3, controls=controls, patches=[])
+    nexus = MIDICastNexus(url="http://127.0.0.1:5001", timeInput=3, tonicInput=3, controls=controls, patches=patches, patch="Patch 1")
     nexus(inport)
