@@ -1,0 +1,58 @@
+{
+    "settings":{
+        "url":"http://127.0.0.1:5001",
+        "deviceID":"E-MU XMidi1X1 Tab:E-MU XMidi1X1 Tab Out 20:0",
+        "timeInput":[1],
+        "tonicInput":[1],
+        "patchID":"Patch 2"
+    },
+    "controls":[
+        {"type":"ResetEverything", "msgChannel":10, "msgType":"note_on", "msgValue":36},
+        {"type": "LoadPatch", "msgChannel":10, "msgType":"note_on", "msgValue":37, "patchID": "Patch 1"},
+        {"type": "LoadPatch", "msgChannel":10, "msgType":"note_on", "msgValue":38, "patchID": "Patch 2"},
+        {"type": "ToggleMute", "msgChannel":10, "msgType":"note_on", "msgValue": 39, "muteChannel":1}
+    ],
+    "patches":{
+        "Patch 1":{
+            "bpm":120, "steps":16, "repeat":1, "nextPatch":"Patch 1",
+            "parts":{
+                "Synth 1":{
+                    "outputChannel":1,
+                    "chord":[
+                        {"startStep":1, "rate":4, "offset":1, "gate":2, "degrees":["1", "4", "6b", "9#"]}
+                    ],
+                    "seq":[
+                        {"startStep":3, "rate":3, "count":4, "gate":2, "notes":["C4", 0, "E4",0, "G4"]}
+                    ],
+                    "rest":[
+                        
+                        {"startStep":4},
+                        {"startStep":15}
+                    ]
+                }
+            }
+        },
+        "Patch 2":{
+            "bpm":77, "steps":8, 
+            "parts":{
+                "Synth 1":{
+                    "outputChannel":1,
+                    "arp":[
+                        {"startStep":1, "rate":4, "offset":1, "gate":2, "degrees":["1", "4", "6b", "9#"]}
+                    ],
+                    "notes":[
+                        {"startStep":2, "rate":6, "count":4,"notes":["F#4"]}
+                    ],
+                    "cc":[
+                        {"outputChannel":1, "startStep":2, "rate":4, "cc":74, "gate":1, "value":[75, 127, 75, 127, 75, 127]}
+                    ],
+                    "rest":[
+                        {"startStep":5},
+                        {"startStep":16}
+                    ]
+                }
+            }
+        }
+    }
+    
+}

@@ -167,7 +167,7 @@ class MIDICastNexus:
         else:
             patch =  self.patches.get(patchID, None)
             if patch is None:
-                print(f"No patch {patchID} found to load")
+                print(f"No patch '{patchID}' found to load")
             else:
                 self.isActive = False 
                 self.patch = patch
@@ -176,7 +176,7 @@ class MIDICastNexus:
                 self.currentStep = 1
                 self.sendPanic()
                 self.isActive = True
-                print(f"Patch {patch.id} is now loaded")
+                print(f"Patch '{patch.id}' is now loaded")
 
     '''
         HTTP Send Methods 

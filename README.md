@@ -30,10 +30,14 @@ To create `requrements.txt`:
 
 > pip freeze > requirements.txt
 
+## TODO (11/25)
 
-
-## TODO (11/24)
-
-- Bindings
-  - SweepBinding - see if we can make this work better
-- JSON Config
+- Allow `STRING` type value for gates since `FLOAT` isn't supported by JSON
+- See if we can make **SweepBinding** work better
+- Consider a "ControlBinding" that allows a seperate input to control the rate of some note - the thinking here is that note is a snare sample, we could get drill & bass like rolls by increasing or decreaing the rate of a note being sent by a dedicated input - such as a knob CC controller
+- Documentation
+    - MIDICastNexus settings
+    - Availabe controls
+    - Available bindings
+    - Example JSON
+- Testing, testing, testing...
